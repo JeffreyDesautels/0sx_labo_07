@@ -1,11 +1,9 @@
 #pragma region definitions
 #include <LCD_I2C.h>
-#include <AccelStepper.h>
 #include <HCSR04.h>
 #include <U8g2lib.h>
 #include "Alarm.h"
-
-#define MOTOR_INTERFACE_TYPE 4
+#include "ViseurAutomatique.h"
 
 #define BUZZER_PIN 2
 
@@ -25,30 +23,15 @@
 #define DIN_PIN 34
 #define CS_PIN 32
 
-float distance;
-Alarm alarm(LED_PIN_RED, LED_PIN_GREEN, LED_PIN_BLUE, BUZZER_PIN, distance);
-
 LCD_I2C lcd(0x27, 16, 2);
-AccelStepper motor(MOTOR_INTERFACE_TYPE, IN_1, IN_3, IN_2, IN_4);
 HCSR04 hc(TRIGGER_PIN, ECHO_PIN);
 U8G2_MAX7219_8X8_F_4W_SW_SPI u8g2(
-  U8G2_R0,             // rotation
-  /* clock=*/CLK_PIN,  // pin Arduino reliée à CLK (horloge)
-  /* data=*/DIN_PIN,   // pin Arduino reliée à DIN (données)
-  /* cs=*/CS_PIN,      // pin Arduino reliée à CS (chip select)
-  /* dc=*/U8X8_PIN_NONE,
-  /* reset=*/U8X8_PIN_NONE);
-
-enum StepperAppState { NORMAL,
-                       TOO_CLOSE,
-                       TOO_FAR };
-
-StepperAppState stepperAppState = NORMAL;
-
-// enum AlertAppState { ALERT_OFF,
-//                      ALERT_ON };
-
-// AlertAppState alertAppState = ALERT_OFF;
+  U8G2_R0,
+  CLK_PIN,
+  DIN_PIN,
+  CS_PIN,
+  U8X8_PIN_NONE,
+  U8X8_PIN_NONE);
 
 enum MatrixAppState {
   EMPTY,
@@ -64,136 +47,21 @@ char lcdBuff[2][16] = {
   "                "
 };
 
+float distance;
+
 unsigned long current_time = 0;
-
-int frequency = 1;
-
-int current_color = 0;
-
-// float distance;
-int min_distance = 30;
-int max_distance = 60;
-int alert_distance = 15;
-
-int angle;
-int min_angle = 10;
-int max_angle = 170;
-float lap = 2038;
-
-float max_step = (lap * max_angle) / 360;
-float min_step = (lap * min_angle) / 360;
 
 String tampon = "";
 
 unsigned long start_timer_matrix = 0;
 bool timer_started_matrix = false;
 const long timer_interval_matrix = 3000;
+
+Alarm alarm(LED_PIN_RED, LED_PIN_GREEN, LED_PIN_BLUE, BUZZER_PIN, distance);
+ViseurAutomatique viseurAutomatique(IN_1, IN_2, IN_3, IN_4, distance);
 #pragma endregion
 
 #pragma region states
-int normal_state() {
-  float current_position = map(distance, min_distance, max_distance, min_step, max_step);
-  current_position = constrain(current_position, min_step, max_step);
-
-  angle = map(current_position, min_step, max_step, min_angle, max_angle);
-
-  motor.moveTo(current_position);
-  motor.run();
-
-  bool transition_T_C = distance < min_distance && (motor.distanceToGo() == 0);
-  bool transition_T_F = distance > max_distance && (motor.distanceToGo() == 0);
-
-  if (transition_T_C) {
-    stepperAppState = TOO_CLOSE;
-  } else if (transition_T_F) {
-    stepperAppState = TOO_FAR;
-  }
-
-  return angle;
-}
-
-void too_close_state() {
-  motor.disableOutputs();
-
-  bool transition_N = distance > min_distance;
-
-  if (transition_N) {
-    stepperAppState = NORMAL;
-  }
-}
-
-void too_far_state() {
-  motor.disableOutputs();
-
-  bool transition = distance < max_distance;
-
-  if (transition) {
-    stepperAppState = NORMAL;
-  }
-}
-
-// void alert_off_state() {
-//   bool transition = distance < alert_distance;
-
-//   noTone(BUZZER_PIN);
-//   set_color_task(0, 0, 0);
-
-//   if (transition) {
-//     alertAppState = ALERT_ON;
-//   }
-// }
-
-// void alert_on_state(unsigned long ct) {
-//   static unsigned long start_timer = 0;
-//   static bool timer_started = false;
-//   const long timer_interval = 3000;
-
-//   bool transition = distance > alert_distance;
-
-//   tone(BUZZER_PIN, frequency);
-//   led_blink_task(ct);
-
-//   if (transition) {        // detecte condition sortie etat
-//     if (!timer_started) {  // demarre le timer si pas deja demarre
-//       start_timer = ct;
-//       timer_started = true;
-//     } else if (ct - start_timer >= timer_interval) {  // change detat si le timer est supperieur a 3 secondes
-//       timer_started = false;
-//       alertAppState = ALERT_OFF;
-//     }
-//   } else {  // reinitialise le timer si la transition tombe a false
-//     timer_started = false;
-//   }
-// }
-
-void stepper_state_manager() {
-  switch (stepperAppState) {
-    case NORMAL:
-      normal_state();
-      break;
-
-    case TOO_CLOSE:
-      too_close_state();
-      break;
-
-    case TOO_FAR:
-      too_far_state();
-      break;
-  }
-}
-
-// void alert_state_manager(unsigned long ct) {
-//   switch (alertAppState) {
-//     case ALERT_OFF:
-//       alert_off_state();
-//       break;
-
-//     case ALERT_ON:
-//       alert_on_state(ct);
-//       break;
-//   }
-// }
-
 void matrix_state_manager(unsigned long ct) {
   u8g2.clearBuffer();
   switch (matrixAppState) {
@@ -244,10 +112,6 @@ void print_task(unsigned long ct) {
   if (ct - previous_time >= interval) {
     previous_time = ct;
 
-    // Serial.print("etd:2255309,dist:");
-    // Serial.print(distance);
-    // Serial.print(",deg:");
-
     lcd.clear();
 
     char distStr[10];
@@ -258,53 +122,9 @@ void print_task(unsigned long ct) {
 
     lcd.setCursor(0, 1);
     lcd.print("Obj  : ");
-
-    if (distance < min_distance) {
-      if (distance < alert_distance) {
-        snprintf(lcdBuff[1], sizeof(lcdBuff[1]), "ALERTE");
-        // Serial.println("ALERTE");
-      } else {
-        snprintf(lcdBuff[1], sizeof(lcdBuff[1]), "Trop pres");
-        // Serial.println("Trop pres");
-      }
-    } else if (distance > max_distance) {
-      snprintf(lcdBuff[1], sizeof(lcdBuff[1]), "Trop loin");
-      // Serial.println("Trop loin");
-    } else {
-      snprintf(lcdBuff[1], sizeof(lcdBuff[1]), "%d deg", angle);
-      // Serial.println(angle);
-    }
-
-    lcd.print(lcdBuff[1]);
+    lcd.print(viseurAutomatique.getEtatTexte());
   }
 }
-
-void set_color_task(int R, int G, int B) {
-  analogWrite(LED_PIN_RED, R);
-  analogWrite(LED_PIN_GREEN, G);
-  analogWrite(LED_PIN_BLUE, B);
-}
-
-void led_blink_task(unsigned long ct) {
-  static unsigned long previous_time = 0;
-  const long led_interval = 200;
-
-  if (ct - previous_time >= led_interval) {
-    previous_time = ct;
-
-    switch (current_color) {
-      case 0:
-        set_color_task(255, 0, 0);  // rouge
-        current_color++;
-        break;
-      case 1:
-        set_color_task(0, 0, 255);  // bleu
-        current_color = 0;
-        break;
-    }
-  }
-}
-
 
 void serial_event_default_msg(String tampon) {
   Serial.print("PC : " + tampon + "\n" + "Arduino : ");
@@ -314,6 +134,7 @@ bool matrix_timer(unsigned long ct) {
   if (!timer_started_matrix) {  // demarre le timer si pas deja demarre
     start_timer_matrix = ct;
     timer_started_matrix = true;
+
   } else if (ct - start_timer_matrix >= timer_interval_matrix) {  // change detat si le timer est supperieur a 3 secondes
     start_timer_matrix = 0;
     timer_started_matrix = false;
@@ -387,13 +208,14 @@ void serial_event_task(unsigned long ct) {
       } else if (command == "cfg" && arg1 == "alm") {
         serial_event_default_msg(tampon);
 
-        int new_alert_distance = arg2.toInt();
+        float new_alert_distance = arg2.toFloat();
 
-        if (new_alert_distance > 0 && new_alert_distance < min_distance) {
-          alert_distance = new_alert_distance;
+        if (new_alert_distance > 0) {
+          alarm.setDistance(new_alert_distance);
           Serial.print("Nouvelle distance de détection de l'alarme = ");
-          Serial.println(alert_distance);
+          Serial.println(alarm.getDistance());
           matrixAppState = CHECKMARK;
+
         } else {
           Serial.println("🚫");
           matrixAppState = ERROR;
@@ -402,19 +224,22 @@ void serial_event_task(unsigned long ct) {
       } else if (command == "cfg" && (arg1 == "lim_inf" || arg1 == "lim_sup")) {
         serial_event_default_msg(tampon);
 
-        int new_limit = arg2.toInt();
+        float new_limit = arg2.toFloat();
 
         if (new_limit > 0) {
-          if (arg1 == "lim_inf" && new_limit < max_distance) {
-            min_distance = new_limit;
+
+          if (arg1 == "lim_inf" && new_limit < viseurAutomatique.getDistanceMaxSuivi()) {
+            viseurAutomatique.setDistanceMinSuivi(new_limit);
             Serial.print("Nouvelle distance minimum du moteur pas-à-pas = ");
-            Serial.println(min_distance);
+            Serial.println(viseurAutomatique.getDistanceMinSuivi());
             matrixAppState = CHECKMARK;
-          } else if (arg1 == "lim_sup" && new_limit > min_distance) {
-            max_distance = new_limit;
+
+          } else if (arg1 == "lim_sup" && new_limit > viseurAutomatique.getDistanceMinSuivi()) {
+            viseurAutomatique.setDistanceMaxSuivi(new_limit);
             Serial.print("Nouvelle distance maximum du moteur pas-à-pas = ");
-            Serial.println(max_distance);
+            Serial.println(viseurAutomatique.getDistanceMaxSuivi());
             matrixAppState = CHECKMARK;
+
           } else {
             Serial.println("🚫");
             matrixAppState = ERROR;
@@ -439,6 +264,18 @@ void serial_event_task(unsigned long ct) {
 
         alarm.test();
 
+      } else if (command == "activer") {
+        serial_event_default_msg(tampon);
+        Serial.println("Moteur activé");
+
+        viseurAutomatique.activer();
+
+      } else if (command == "desactiver") {
+        serial_event_default_msg(tampon);
+        Serial.println("Moteur désactivé");
+
+        viseurAutomatique.desactiver();
+
       } else {
         Serial.println("❌");
         matrixAppState = BAD_COMMAND;
@@ -456,19 +293,8 @@ void serial_event_task(unsigned long ct) {
 void setup() {
   Serial.begin(115200);
 
-  pinMode(BUZZER_PIN, OUTPUT);
-
-  pinMode(LED_PIN_RED, OUTPUT);
-  pinMode(LED_PIN_GREEN, OUTPUT);
-  pinMode(LED_PIN_BLUE, OUTPUT);
-
   lcd.begin();
   lcd.backlight();
-
-  motor.setMaxSpeed(500);
-  motor.setAcceleration(100);
-  motor.setSpeed(500);
-  motor.setCurrentPosition(0);
 
   u8g2.begin();
   u8g2.setContrast(5);
@@ -483,8 +309,7 @@ void loop() {
   current_time = millis();
 
   distance_task(current_time);
-  stepper_state_manager();
-  // alert_state_manager(current_time);
+  viseurAutomatique.update();
   alarm.update();
   print_task(current_time);
   matrix_state_manager(current_time);

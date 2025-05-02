@@ -54,6 +54,10 @@ void Alarm::setDistance(float d) {
   _distanceTrigger = d;
 }
 
+float Alarm::getDistance() {
+  return _distanceTrigger;
+}
+
 void Alarm::setTimeout(unsigned long ms) {
   _timeoutDelay = ms;
 }

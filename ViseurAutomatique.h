@@ -54,10 +54,17 @@ public:
 
   void setDistanceMinSuivi(float distanceMin);
 
+  // Retourne la distance minimale à partir de laquelle le viseur commence à suivre
+
+  float getDistanceMinSuivi();
 
   // Définit la distance maximale jusqu'où le viseur peut suivre
 
   void setDistanceMaxSuivi(float distanceMax);
+
+  // Retourne la distance maximale jusqu'où le viseur peut suivre
+
+  float getDistanceMaxSuivi();
 
 
   // Retourne l’angle actuel du viseur
@@ -94,16 +101,33 @@ private:
 
   int _stepsPerRev = 2038;
 
+  float _minStep = 0;
+
+  float _maxStep = 0;
+
 
   float _distanceMinSuivi = 30.0;
 
   float _distanceMaxSuivi = 60.0;
 
 
+  float _currentPosition = 0;
+
+
   unsigned long _currentTime = 0;
 
 
   EtatViseur _etat = INACTIF;
+
+  // --- Indicateurs de transition ---
+
+  bool _transitionRepos;
+
+  bool _transitionSuivi;
+
+  // bool _activerFlag = false;
+
+  // bool _desactiverFlag = false;
 
 
   // États

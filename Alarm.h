@@ -52,6 +52,9 @@ public:
 
   void setDistance(float d);
 
+  // Retourne la distance de déclenchement (en cm)
+
+  float getDistance();
 
   // Régle le délai avant l'extinction après éloignement (en ms)
 
