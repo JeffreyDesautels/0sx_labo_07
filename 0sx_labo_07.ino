@@ -3,6 +3,7 @@
 #include <AccelStepper.h>
 #include <HCSR04.h>
 #include <U8g2lib.h>
+#include "Alarm.h"
 
 #define MOTOR_INTERFACE_TYPE 4
 
@@ -24,6 +25,9 @@
 #define DIN_PIN 34
 #define CS_PIN 32
 
+float distance;
+Alarm alarm(LED_PIN_RED, LED_PIN_GREEN, LED_PIN_BLUE, BUZZER_PIN, distance);
+
 LCD_I2C lcd(0x27, 16, 2);
 AccelStepper motor(MOTOR_INTERFACE_TYPE, IN_1, IN_3, IN_2, IN_4);
 HCSR04 hc(TRIGGER_PIN, ECHO_PIN);
@@ -41,10 +45,10 @@ enum StepperAppState { NORMAL,
 
 StepperAppState stepperAppState = NORMAL;
 
-enum AlertAppState { ALERT_OFF,
-                     ALERT_ON };
+// enum AlertAppState { ALERT_OFF,
+//                      ALERT_ON };
 
-AlertAppState alertAppState = ALERT_OFF;
+// AlertAppState alertAppState = ALERT_OFF;
 
 enum MatrixAppState {
   EMPTY,
@@ -66,7 +70,7 @@ int frequency = 1;
 
 int current_color = 0;
 
-int distance;
+// float distance;
 int min_distance = 30;
 int max_distance = 60;
 int alert_distance = 15;
@@ -128,39 +132,39 @@ void too_far_state() {
   }
 }
 
-void alert_off_state() {
-  bool transition = distance < alert_distance;
+// void alert_off_state() {
+//   bool transition = distance < alert_distance;
 
-  noTone(BUZZER_PIN);
-  set_color_task(0, 0, 0);
+//   noTone(BUZZER_PIN);
+//   set_color_task(0, 0, 0);
 
-  if (transition) {
-    alertAppState = ALERT_ON;
-  }
-}
+//   if (transition) {
+//     alertAppState = ALERT_ON;
+//   }
+// }
 
-void alert_on_state(unsigned long ct) {
-  static unsigned long start_timer = 0;
-  static bool timer_started = false;
-  const long timer_interval = 3000;
+// void alert_on_state(unsigned long ct) {
+//   static unsigned long start_timer = 0;
+//   static bool timer_started = false;
+//   const long timer_interval = 3000;
 
-  bool transition = distance > alert_distance;
+//   bool transition = distance > alert_distance;
 
-  tone(BUZZER_PIN, frequency);
-  led_blink_task(ct);
+//   tone(BUZZER_PIN, frequency);
+//   led_blink_task(ct);
 
-  if (transition) {        // detecte condition sortie etat
-    if (!timer_started) {  // demarre le timer si pas deja demarre
-      start_timer = ct;
-      timer_started = true;
-    } else if (ct - start_timer >= timer_interval) {  // change detat si le timer est supperieur a 3 secondes
-      timer_started = false;
-      alertAppState = ALERT_OFF;
-    }
-  } else {  // reinitialise le timer si la transition tombe a false
-    timer_started = false;
-  }
-}
+//   if (transition) {        // detecte condition sortie etat
+//     if (!timer_started) {  // demarre le timer si pas deja demarre
+//       start_timer = ct;
+//       timer_started = true;
+//     } else if (ct - start_timer >= timer_interval) {  // change detat si le timer est supperieur a 3 secondes
+//       timer_started = false;
+//       alertAppState = ALERT_OFF;
+//     }
+//   } else {  // reinitialise le timer si la transition tombe a false
+//     timer_started = false;
+//   }
+// }
 
 void stepper_state_manager() {
   switch (stepperAppState) {
@@ -178,17 +182,17 @@ void stepper_state_manager() {
   }
 }
 
-void alert_state_manager(unsigned long ct) {
-  switch (alertAppState) {
-    case ALERT_OFF:
-      alert_off_state();
-      break;
+// void alert_state_manager(unsigned long ct) {
+//   switch (alertAppState) {
+//     case ALERT_OFF:
+//       alert_off_state();
+//       break;
 
-    case ALERT_ON:
-      alert_on_state(ct);
-      break;
-  }
-}
+//     case ALERT_ON:
+//       alert_on_state(ct);
+//       break;
+//   }
+// }
 
 void matrix_state_manager(unsigned long ct) {
   u8g2.clearBuffer();
@@ -245,7 +249,10 @@ void print_task(unsigned long ct) {
     // Serial.print(",deg:");
 
     lcd.clear();
-    snprintf(lcdBuff[0], sizeof(lcdBuff[0]), "Dist : %d cm", distance);
+
+    char distStr[10];
+    dtostrf(distance, 6, 2, distStr);
+    snprintf(lcdBuff[0], sizeof(lcdBuff[0]), "Dist :%s cm", distStr);
     lcd.setCursor(0, 0);
     lcd.print(lcdBuff[0]);
 
@@ -372,10 +379,11 @@ void serial_event_task(unsigned long ct) {
 
       parsing_command(tampon, command, arg1, arg2);
 
-      if (command == "g_dist") {
+      if (command == "g_dist" || command == "gDist") {
         serial_event_default_msg(tampon);
         Serial.println(distance);
         matrixAppState = CHECKMARK;
+
       } else if (command == "cfg" && arg1 == "alm") {
         serial_event_default_msg(tampon);
 
@@ -390,6 +398,7 @@ void serial_event_task(unsigned long ct) {
           Serial.println("🚫");
           matrixAppState = ERROR;
         }
+
       } else if (command == "cfg" && (arg1 == "lim_inf" || arg1 == "lim_sup")) {
         serial_event_default_msg(tampon);
 
@@ -411,11 +420,31 @@ void serial_event_task(unsigned long ct) {
             matrixAppState = ERROR;
           }
         }
+
+      } else if (command == "turn_on" || command == "turnOn") {
+        serial_event_default_msg(tampon);
+        Serial.println("Système d'alarme allumé");
+
+        alarm.turnOn();
+
+      } else if (command == "turn_off" || command == "turnOff") {
+        serial_event_default_msg(tampon);
+        Serial.println("Système d'alarme éteint");
+
+        alarm.turnOff();
+
+      } else if (command == "test") {
+        serial_event_default_msg(tampon);
+        Serial.println("Test du système d'alarme");
+
+        alarm.test();
+
       } else {
         Serial.println("❌");
         matrixAppState = BAD_COMMAND;
       }
       tampon = "";
+
     } else {
       tampon += input_char;
     }
@@ -455,7 +484,8 @@ void loop() {
 
   distance_task(current_time);
   stepper_state_manager();
-  alert_state_manager(current_time);
+  // alert_state_manager(current_time);
+  alarm.update();
   print_task(current_time);
   matrix_state_manager(current_time);
   serial_event_task(current_time);

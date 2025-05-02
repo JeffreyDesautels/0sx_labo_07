@@ -28,7 +28,7 @@ public:
 
   // distancePtr : pointeur vers la variable de distance partagée
 
-  Alarm(int rPin, int gPin, int bPin, int buzzerPin, float* distancePtr);
+  Alarm(int rPin, int gPin, int bPin, int buzzerPin, float& distancePtr);
 
 
   // Méthode à appeler continuellement dans loop()
@@ -93,7 +93,7 @@ private:
 
   // --- Détection ---
 
-  float* _distance;  // Pointeur vers la distance externe
+  float& _distance;  // Pointeur vers la distance externe
 
   float _distanceTrigger = 10.0;  // Distance minimale pour déclenchement
 

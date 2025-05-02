@@ -1,12 +1,15 @@
 #include "Alarm.h"
 #include <Arduino.h>
 
-Alarm::Alarm(int rPin, int gPin, int bPin, int buzzerPin, float* distancePtr)
+Alarm::Alarm(int rPin, int gPin, int bPin, int buzzerPin, float& distancePtr)
   : _rPin(rPin), _gPin(gPin), _bPin(bPin), _buzzerPin(buzzerPin), _distance(distancePtr) {
   pinMode(_rPin, OUTPUT);
   pinMode(_gPin, OUTPUT);
   pinMode(_bPin, OUTPUT);
   pinMode(_buzzerPin, OUTPUT);
+
+  setColourA(255, 0, 0);
+  setColourB(0, 0, 255);
 }
 
 void Alarm::update() {
@@ -64,47 +67,90 @@ void Alarm::turnOn() {
 }
 
 void Alarm::test() {
-  _state = TESTING;
   _testStartTime = _currentTime;
+  _state = TESTING;
+}
+
+void Alarm::_setRGB(int r, int g, int b) {
+  analogWrite(_rPin, r);
+  analogWrite(_gPin, g);
+  analogWrite(_bPin, b);
+}
+
+void Alarm::_turnOff() {
+  _setRGB(0, 0, 0);
+  noTone(_buzzerPin);
 }
 
 void Alarm::_offState() {
-  bool transition = _turnOnFlag;
+  _turnOff();
 
-  if (transition) {
+  if (_turnOnFlag) {
     _turnOnFlag = false;
     _state = WATCHING;
   }
 }
 
 void Alarm::_watchState() {
-  bool transitionOn = (*_distance) < _distanceTrigger;
-  bool transitionOff = _turnOffFlag;
+  _turnOff();
 
-  if (transitionOn) {
+  if (_distance < _distanceTrigger) {
     _state = ON;
-  } else if (transitionOff) {
+  } else if (_turnOffFlag) {
     _turnOffFlag = false;
     _state = OFF;
   }
 }
 
 void Alarm::_onState() {
-  bool transitionWatching = (*_distance) >= _distanceTrigger && (_currentTime - _lastDetectedTime) > _timeoutDelay;
-  bool transitionOff = _turnOffFlag;
+  if (_distance >= _distanceTrigger) {
+    if ((_currentTime - _lastDetectedTime) >= _timeoutDelay) {
+      _state = WATCHING;
+    }
+  } else {
+    _lastDetectedTime = _currentTime;
+  }
 
-  if (transitionWatching) {
-    _state = WATCHING;
-  } else if (transitionOff) {
+  if (_turnOffFlag) {
     _turnOffFlag = false;
     _state = OFF;
+  }
+
+  if (_currentTime - _lastUpdate >= _variationRate) {
+    _lastUpdate = _currentTime;
+    tone(_buzzerPin, 1);
+
+    switch (_currentColor) {
+      case false:
+        _setRGB(_colA[0], _colA[1], _colA[2]);
+        _currentColor = true;
+        break;
+      case true:
+        _setRGB(_colB[0], _colB[1], _colB[2]);
+        _currentColor = false;
+        break;
+    }
   }
 }
 
 void Alarm::_testingState() {
-  bool transitionOff = (_currentTime - _testStartTime) > _timeoutDelay;
-
-  if (transitionOff) {
+  if ((_currentTime - _testStartTime) > _timeoutDelay) {
     _state = OFF;
+  }
+
+  if (_currentTime - _lastUpdate >= _variationRate) {
+    _lastUpdate = _currentTime;
+    tone(_buzzerPin, 1);
+
+    switch (_currentColor) {
+      case false:
+        _setRGB(_colA[0], _colA[1], _colA[2]);
+        _currentColor = true;
+        break;
+      case true:
+        _setRGB(_colB[0], _colB[1], _colB[2]);
+        _currentColor = false;
+        break;
+    }
   }
 }
